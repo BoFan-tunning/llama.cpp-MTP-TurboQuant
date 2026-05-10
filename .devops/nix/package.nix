@@ -16,9 +16,9 @@
   rocmPackages,
   vulkan-headers,
   vulkan-loader,
+  spirv-headers,
   openssl,
   shaderc,
-  spirv-headers,
   useBlas ?
     builtins.all (x: !x) [
       useCuda
@@ -103,6 +103,7 @@ let
     vulkan-headers
     vulkan-loader
     shaderc
+    spirv-headers
   ];
 in
 
