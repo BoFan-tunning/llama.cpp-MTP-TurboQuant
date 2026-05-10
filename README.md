@@ -10,6 +10,102 @@
 
 LLM inference in C/C++
 
+## MTP+TurboQuant
+
+这是一个 **MTP (Multi-Token Prediction) + TurboQuant** 的 llama.cpp 超级分支，显著提升推理吞吐与生成质量。
+
+> ⚠️ **当前限制**：MTP 模式暂不支持 Vision（多模态视觉），仅适用于纯文本模型。
+
+> ⚠️ **模型要求**：必须配合**内置 MTP 头部**的 GGUF 文件使用（如 Qwen3.6-27B-Q4_K_P_mtp.gguf），普通 GGUF 无法启用 MTP。
+
+---
+
+### 编译（CUDA 版本）
+
+```batch
+@echo off
+cd /d "源代码目录如 F:\llamacpp_MTP_TurboQuant"
+
+:: ⚡ CUDA 架构号请根据自身显卡修改（例如：75=RTX 2080, 89=RTX 4090, 90=RTX 5090）
+cmake -B build ^
+  -DGGML_CUDA=ON ^
+  -DCMAKE_CUDA_ARCHITECTURES="75" ^
+  -DGGML_CUDA_FA_ALL_QUANTS=ON ^
+  -DGGML_NATIVE=OFF ^
+  -DCMAKE_BUILD_TYPE=Release
+
+cmake --build build --config Release -j --target llama-server llama-cli
+```
+
+> **（根据你的显卡型号修改 `CMAKE_CUDA_ARCHITECTURES`）** 常见对照：
+> - `75` — Turing (RTX 20xx, T4)
+> - `80` — Ampere (RTX 30xx, A100)
+> - `86` — Ampere (RTX 30xx 消费级)
+> - `89` — Ada Lovelace (RTX 40xx)
+> - `90` — Blackwell (RTX 50xx)
+
+---
+
+### 运行（llama-server）
+
+```batch
+@echo off
+cd /d "llama-server.exe文件做在目录如 F:\mtp_llamacpp\llama.cpp\build\bin\Release\"
+
+set CUDA_SCALE_LAUNCH_QUEUES=4x
+
+llama-server.exe -m "mtp属性gguf文件路径 如D:\wd3.7\Qwen3.6-27B-Q4_K_P_mtp.gguf" ^
+  --spec-type mtp --spec-draft-n-max 2 ^
+  -ctk q4_1 -ctv q4_1 ^
+  -c 64000 -b 2048 -ub 512 ^
+  --n-gpu-layers 99 ^
+  --host 0.0.0.0 --port 8080 ^
+  --temp 0.7 --top-k 20 ^
+  -np 1 -fa on ^
+  -t 7 ^
+  --jinja ^
+  --chat-template-file "聊天模板文件路径如：F:\llamacpp_MTP_TurboQuant\3.6_chat_template-v10.jinja" ^
+  --reasoning auto ^
+  --reasoning-format deepseek
+
+pause
+```
+
+> **参数说明（请根据自身硬件调整）**：
+> - `--spec-type mtp` — 启用 MTP 投机解码
+> - `--spec-draft-n-max 2` — MTP 每步预测 2 个候选 token
+> - `-c 64000` — 上下文长度（根据显存调整）
+> - `-t 7` — CPU 线程数（根据你的 CPU 核心数调整）
+> - `--n-gpu-layers 99` — 全量 GPU 卸载
+> - `--jinja` + `--chat-template-file` — 使用增强版 Jinja 模板
+
+---
+
+## 3.6_chat_template-v10.jinja — Qwen 3.6 的超级优化模板
+
+### 超级特性 配合上面的 llama-server 运行命令实现 智能判断是否开启*思考*
+
+
+
+该模板专为 llama.cpp 的 minijinja 引擎深度优化，解决了官方模板 9 大缺陷，以下是其在 **llama.cpp 环境下的核心优势**：
+
+| 优势 | 说明 |
+|------|------|
+| **C++ 引擎原生兼容** | 彻底移除 Python 专属语法（`\|items`、`\|safe`），使用字典直接取值 + `is iterable` 替代，minijinja 零错误渲染 |
+| **智能自动思考（Auto-Thinking）** | 自动判断用户输入长度：短问题（≤30 字符）跳过思考 → 秒回；长问题（≥300 字符）强制思考 → 深度推理。阈值可通过 `auto_think_short_threshold` / `auto_think_force_threshold` 自定义 |
+| **思考开关标签** | 在 system / user 消息中插入 `<\|think_off\|>` 或 `<\|think_on\|>` 即可实时切换推理模式，标签在渲染时自动移除，模型完全感知不到 |
+| **`</thinking>` 幻觉恢复** | Qwen 3.6 有时会输出 `</thinking>` 而非 ` response`，模板自动检测两种闭合标签并动态分割，防止推理流中断 |
+| **思考未闭合自动修复** | 模型在 thinking 块中直接调用 tool 时（未输出 ` response`），模板自动注入闭合标签，防止 XML 标签污染工具调用 |
+| **Tool Call 参数完美兼容** | 支持 string / object 两种参数格式，多层嵌套 JSON 正常渲染，`-ctk q4_1 -ctv q4_1` 缓存下依然稳定 |
+| **多轮工具调用（Agent 友好）** | 正向遍历检测 multi-step tool chain，无用户查询时优雅回退而非崩溃，适配 OpenCode、Docker Agent 等框架 |
+| **对话中 system 消息** | 官方模板在非首条 system 消息时直接崩溃；本模板按时间顺序渲染，兼容所有 agent 框架的中间指令注入 |
+| **`developer` 角色支持** | 完整映射 OpenAI API 的 `developer` 角色 |
+| **Generation Prompt 精细控制** | 模板结尾根据 `enable_thinking` 状态精确输出 ` thinking\n`（启用思考）或 ` thinking\n\n response\n\n`（快速回答），引导模型输出格式 |
+
+> **关键参数**：搭配 `--reasoning auto --reasoning-format deepseek` 使用，llama.cpp 可自动解析模板输出的 thinking 块并分离显示，实现类似 DeepSeek 的推理过程可视化。
+
+
+
 ## Recent API changes
 
 - [Changelog for `libllama` API](https://github.com/ggml-org/llama.cpp/issues/9289)
