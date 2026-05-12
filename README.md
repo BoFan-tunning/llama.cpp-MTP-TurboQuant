@@ -10,13 +10,25 @@
 
 LLM inference in C/C++
 
-## MTP+TurboQuant
+## llama.cpp MTP+TurboQuant 融合版
 
-这是一个 **MTP (Multi-Token Prediction) + TurboQuant** 的 llama.cpp 超级分支，显著提升推理吞吐与生成质量。
+整合 **MTP (Multi-Token Prediction)** + **TurboQuant**，推理速度起飞！提升幅度 **2-5 倍**。
 
-> ✅ **多模态支持**：MTP 模式现已支持 Vision（多模态视觉），图像输入下可正常启用推测解码。
-
+> ✅ **Vision 多模态已修复**：MTP 模式现已完美支持图像输入，多模态 + 推测解码同时启用不再崩溃。
+>
+> ✅ **MTP + TurboQuant 完美融合**：同时享受 MTP 推测解码的加速和 TurboQuant KV Cache 压缩的显存节省。
+>
 > ⚠️ **模型要求**：必须配合**内置 MTP 头部**的 GGUF 文件使用（如 Qwen3.6-27B-Q4_K_P_mtp.gguf），普通 GGUF 无法启用 MTP。
+
+### 核心特性
+
+| 特性 | 说明 |
+|------|------|
+| **MTP 推测解码** | 每步预测多个 token，推理吞吐提升 2-5 倍 |
+| **TurboQuant KV Cache** | `-ctk q8_0 -ctv turbo3` 非对称压缩，相比 F16 节省 76% 显存 |
+| **Vision 多模态支持** | MTP + 图像输入同时启用，已修复上游崩溃问题 |
+| **Qwen 3.6 智能思考模板** | 新增增强版 Jinja 模板，实现智能思考支持 |
+| **Tool Calling 完美兼容** | 修复官方模板 9 大缺陷，多层嵌套 JSON 正常渲染 |
 
 ---
 
