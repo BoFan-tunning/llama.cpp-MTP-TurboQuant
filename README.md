@@ -14,7 +14,7 @@ LLM inference in C/C++
 
 这是一个 **MTP (Multi-Token Prediction) + TurboQuant** 的 llama.cpp 超级分支，显著提升推理吞吐与生成质量。
 
-> ⚠️ **当前限制**：MTP 模式暂不支持 Vision（多模态视觉），仅适用于纯文本模型。
+> ✅ **多模态支持**：MTP 模式现已支持 Vision（多模态视觉），图像输入下可正常启用推测解码。
 
 > ⚠️ **模型要求**：必须配合**内置 MTP 头部**的 GGUF 文件使用（如 Qwen3.6-27B-Q4_K_P_mtp.gguf），普通 GGUF 无法启用 MTP。
 
@@ -42,7 +42,7 @@ cmake --build build --config Release -j --target llama-server llama-cli
 > - `80` — Ampere (RTX 30xx, A100)
 > - `86` — Ampere (RTX 30xx 消费级)
 > - `89` — Ada Lovelace (RTX 40xx)
-> - `90` — Blackwell (RTX 50xx)
+> - `120` — Blackwell (RTX 50xx)
 
 ---
 
@@ -50,14 +50,14 @@ cmake --build build --config Release -j --target llama-server llama-cli
 
 ```batch
 @echo off
-cd /d "llama-server.exe文件做在目录如 F:\mtp_llamacpp\llama.cpp\build\bin\Release\"
+cd /d "llama-server.exe文件所在目录如 F:\mtp_llamacpp\llama.cpp\build\bin\Release\"
 
 set CUDA_SCALE_LAUNCH_QUEUES=4x
 
-llama-server.exe -m "mtp属性gguf文件路径 如D:\wd3.7\Qwen3.6-27B-Q4_K_P_mtp.gguf" ^
+llama-server.exe -m "mtp属性gguf文件路径 如D:\wd3.7\Qwen3.6-27B-Q4_K_P_mtp.gguf" --mmproj "多模态投影文件路径 如D:\wd3.7\mmproj-Qwen3.6-27B.gguf" ^
   --spec-type mtp --spec-draft-n-max 2 ^
-  -ctk q4_1 -ctv q4_1 ^
-  -c 64000 -b 2048 -ub 512 ^
+  -ctk q8_0 -ctv turbo3 ^
+  -c 8000 -b 2048 -ub 512 ^
   --n-gpu-layers 99 ^
   --host 0.0.0.0 --port 8080 ^
   --temp 0.7 --top-k 20 ^
@@ -74,7 +74,9 @@ pause
 > **参数说明（请根据自身硬件调整）**：
 > - `--spec-type mtp` — 启用 MTP 投机解码
 > - `--spec-draft-n-max 2` — MTP 每步预测 2 个候选 token
-> - `-c 64000` — 上下文长度（根据显存调整）
+> - `-ctk q8_0 -ctv turbo3` — KV Cache 非对称压缩（K 用 8-bit 保精度，V 用 TurboQuant 3-bit 省显存），相比全 F16 节省约 76% 显存
+> - `--mmproj` — 多模态投影文件，启用视觉识别能力
+> - `-c 8000` — 上下文长度（根据显存调整）
 > - `-t 7` — CPU 线程数（根据你的 CPU 核心数调整）
 > - `--n-gpu-layers 99` — 全量 GPU 卸载
 > - `--jinja` + `--chat-template-file` — 使用增强版 Jinja 模板
