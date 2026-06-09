@@ -13,6 +13,7 @@ export interface DatabaseConversation {
 	name: string;
 	mcpServerOverrides?: McpServerOverride[];
 	forkedFromConversationId?: string;
+	pinned?: boolean;
 }
 
 export interface DatabaseMessageExtraAudioFile {
