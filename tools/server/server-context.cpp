@@ -714,9 +714,8 @@ private:
     bool sleeping = false;
 
     void destroy() {
-        spec.reset();
-        ctx_dft.reset();
         model_dft.reset();
+        model_mtp.reset();
 
         llama_init.reset();
 
@@ -857,6 +856,8 @@ private:
             auto cparams_mtp = common_context_params_to_llama(params_base);
             cparams_mtp.n_ctx     = llama_n_ctx_seq(ctx);
             cparams_mtp.n_seq_max = 1;
+            cparams_mtp.type_k   = params_base.speculative.draft.cache_type_k;
+            cparams_mtp.type_v   = params_base.speculative.draft.cache_type_v;
             cparams_mtp.n_rs_seq = 0;
 
             params_base.speculative.mtp.model   = model_mtp.get();

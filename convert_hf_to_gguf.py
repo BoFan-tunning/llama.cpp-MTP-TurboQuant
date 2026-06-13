@@ -7873,42 +7873,9 @@ class Gemma4Model(Gemma3Model):
         rope_freqs_full = torch.tensor(values, dtype=torch.float32)
         yield (self.format_tensor_name(gguf.MODEL_TENSOR.ROPE_FREQS), rope_freqs_full)
 
-    def _generate_nvfp4_tensors(self):
-        # Gemma-4 stores a per-layer router.per_expert_scale ([n_expert]) that scales
-        # each expert's contribution. It's mathematically equivalent to a per-expert
-        # scalar on the down_proj output, which is exactly where ffn_down_exps_s is
-        # applied at inference. Fold it into each expert's NVFP4 weight_scale_2 so the
-        # existing NVFP4 path produces the right scales.
-        n_experts = self.find_hparam(["num_local_experts", "num_experts"], optional=True) or 0
-        for name in [n for n in self.model_tensors if n.endswith(".router.per_expert_scale")]:
-            bid_match = re.search(r"\.layers\.(\d+)\.", name)
-            if bid_match is None:
-                continue
-            bid = bid_match.group(1)
-            prefix = name[: name.index(f".layers.{bid}.") + len(f".layers.{bid}.")]
-            w2_targets = [f"{prefix}experts.{e}.down_proj.weight_scale_2" for e in range(n_experts)]
-            present = [w2 in self.model_tensors for w2 in w2_targets]
-            if not any(present):
-                continue
-            assert all(present), f"layer {bid}: partial NVFP4 quantization across experts"
-            r = self.model_tensors.pop(name)
-            for e, w2 in enumerate(w2_targets):
-                s = self.model_tensors[w2]
-                self.model_tensors[w2] = lambda s=s, r=r, i=e: s() * r()[i]
-        super()._generate_nvfp4_tensors()
-
     def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
         if name.endswith("per_dim_scale") or name.endswith("layer_scalar"):
             name = name + ".weight"
-
-    @classmethod
-    def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
-        name, gen = item
-
-        if name.endswith("per_dim_scale") or name.endswith("layer_scalar"):
-            name = name + ".weight"
-        if ".experts." in name and not name.endswith((".weight", ".weight_scale", ".weight_scale_2", ".input_scale")):
-            name += ".weight"
 
         if "language_model." not in name and "rope_freqs" not in name:
             return # skip non-language model tensors
@@ -10854,7 +10821,7 @@ class ExaoneMoEModel(Exaone4Model):
                 raise ValueError(f"Unprocessed experts: {experts}")
 
 
-@ModelBase.register("GraniteForCausalLM", "GraniteSpeechForConditionalGeneration")
+@ModelBase.register("GraniteForCausalLM")
 class GraniteModel(LlamaModel):
     """Conversion for IBM's GraniteForCausalLM"""
     model_arch = gguf.MODEL_ARCH.GRANITE
@@ -10886,13 +10853,6 @@ class GraniteModel(LlamaModel):
         if logits_scale := self.hparams.get("logits_scaling"):
             self.gguf_writer.add_logit_scale(logits_scale)
             logger.info("gguf: (granite) logits_scale = %s", logits_scale)
-
-    @classmethod
-    def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
-        name, gen = item
-        if name.startswith("encoder."):
-            return None
-        return super().filter_tensors(item)
 
 
 @ModelBase.register("GraniteMoeForCausalLM", "GraniteMoeSharedForCausalLM")
@@ -12721,89 +12681,6 @@ class LFM2AudioModel(ConformerAudioModel):
         # for audio output
         if any(p in name for p in ["codebook_offsets", "depth_embeddings", "depth_linear", "depthformer"]):
             return
-
-        yield from super().modify_tensors(data_torch, name, bid)
-
-
-@ModelBase.register("GraniteSpeechForConditionalGeneration")
-class GraniteSpeechMmprojModel(MmprojModel):
-    has_vision_encoder = False
-    has_audio_encoder = True
-
-    _batch_norm_tensors: list[dict[str, Tensor]] | None = None
-
-    def get_audio_config(self) -> dict[str, Any] | None:
-        return self.global_config.get("encoder_config")
-
-    def set_gguf_parameters(self):
-        assert self.hparams_audio is not None
-        a = self.hparams_audio
-        a["hidden_size"] = a["hidden_dim"]
-        a["intermediate_size"] = a["hidden_dim"] * a["feedforward_mult"]
-        a["num_attention_heads"] = a["num_heads"]
-        a["num_hidden_layers"] = a["num_layers"]
-
-        super().set_gguf_parameters()
-
-        self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.GRANITE_SPEECH)
-        self.gguf_writer.add_audio_num_mel_bins(a["input_dim"])
-        self.gguf_writer.add_audio_attention_layernorm_eps(1e-5)
-        self.gguf_writer.add_audio_chunk_size(a["context_size"])
-        self.gguf_writer.add_audio_conv_kernel_size(a["conv_kernel_size"])
-        self.gguf_writer.add_audio_max_pos_emb(a["max_pos_emb"])
-
-        p = self.global_config
-        self.gguf_writer.add_audio_projector_window_size(p["window_size"])
-        self.gguf_writer.add_audio_projector_downsample_rate(p["downsample_rate"])
-        self.gguf_writer.add_audio_projector_head_count(p["projector_config"]["num_attention_heads"])
-
-    def tensor_force_quant(self, name, new_name, bid, n_dims):
-        if "encoder" in name or "projector" in name:
-            if ".conv" in name and ".weight" in name:
-                return gguf.GGMLQuantizationType.F32
-        return super().tensor_force_quant(name, new_name, bid, n_dims)
-
-    @classmethod
-    def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
-        name, gen = item
-        if "attention_dists" in name or "num_batches_tracked" in name:
-            return None
-        return super().filter_tensors(item)
-
-    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
-        # fold running_mean, running_var and eps into weight and bias for batch_norm
-        if "batch_norm" in name and "encoder.layers." in name:
-            if self._batch_norm_tensors is None:
-                self._batch_norm_tensors = [{} for _ in range(self.block_count)]
-            assert bid is not None
-            self._batch_norm_tensors[bid][name] = data_torch
-            if len(self._batch_norm_tensors[bid]) < 4:
-                return
-            prefix = f"encoder.layers.{bid}.conv.batch_norm"
-            weight = self._batch_norm_tensors[bid][f"{prefix}.weight"]
-            bias = self._batch_norm_tensors[bid][f"{prefix}.bias"]
-            running_mean = self._batch_norm_tensors[bid][f"{prefix}.running_mean"]
-            running_var = self._batch_norm_tensors[bid][f"{prefix}.running_var"]
-            eps = 1e-5
-            a = weight / torch.sqrt(running_var + eps)
-            b = bias - running_mean * a
-            yield from super().modify_tensors(a, f"encoder.layers.{bid}.conv.batch_norm.weight", bid)
-            yield from super().modify_tensors(b, f"encoder.layers.{bid}.conv.batch_norm.bias", bid)
-            return
-
-        if ".attn.to_kv.weight" in name:
-            k_weight, v_weight = data_torch.chunk(2, dim=0)
-            yield from super().modify_tensors(k_weight, name.replace("to_kv", "to_k"), bid)
-            yield from super().modify_tensors(v_weight, name.replace("to_kv", "to_v"), bid)
-            return
-
-        if ("up_conv" in name or "down_conv" in name) and name.endswith(".weight"):
-            if data_torch.ndim == 3 and data_torch.shape[2] == 1:
-                data_torch = data_torch.squeeze(2)
-
-        if "depth_conv" in name and name.endswith(".weight"):
-            if data_torch.ndim == 3 and data_torch.shape[1] == 1:
-                data_torch = data_torch.squeeze(1)
 
         yield from super().modify_tensors(data_torch, name, bid)
 

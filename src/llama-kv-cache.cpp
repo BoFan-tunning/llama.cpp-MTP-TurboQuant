@@ -519,11 +519,22 @@ llama_kv_cache::llama_kv_cache(
             ggml_is_quantized(type_v) &&
             hparams.n_embd_head_v() % 64 == 0;
     }
+    attn_rot_k =
+        !attn_rot_disable &&
+        n_embd_head_k_all > 0 &&
+        ggml_is_quantized(type_k) &&
+        hparams.n_embd_head_k() % 64 == 0;
 
     // always create Hadamard rotation tensors for DeepSeek V3.2 DSA lightning indexer
     if (model.arch == LLM_ARCH_DEEPSEEK32 && hparams.n_embd_head_k_full == hparams.indexer_head_size) {
         attn_rot_k = true;
     }
+
+    attn_rot_v =
+        !attn_rot_disable &&
+        n_embd_head_v_all > 0 &&
+        ggml_is_quantized(type_v) &&
+        hparams.n_embd_head_v() % 64 == 0;
 
     LLAMA_LOG_INFO("%s: attn_rot_k = %d, n_embd_head_k_all = %d\n", __func__, attn_rot_k, n_embd_head_k_all);
     LLAMA_LOG_INFO("%s: attn_rot_v = %d, n_embd_head_k_all = %d\n", __func__, attn_rot_v, n_embd_head_v_all);
