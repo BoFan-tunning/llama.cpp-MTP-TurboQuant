@@ -10,10 +10,9 @@
 
 LLM inference in C/C++
 
-| **Qwen 3.6 智能思考模板** | 新增增强版 Jinja 模板，实现智能思考支持 |
-| **Tool Calling 完美兼容** | 修复官方模板 9 大缺陷，多层嵌套 JSON 正常渲染 |
+## llama.cpp MTP+TurboQuant 融合版
 
----
+整合 **MTP (Multi-Token Prediction)** + **TurboQuant**，推理速度起飞！提升幅度 **2-5 倍**。
 
 > ✅ **Vision 多模态已修复**：MTP 模式现已完美支持图像输入，多模态 + 推测解码同时启用不再崩溃。
 >
@@ -22,14 +21,9 @@ LLM inference in C/C++
 > ✅ **已同步上游最新代码**：合并 DeepSeekV32+DSA、Gemma4、Mimo v2.5、Granite Speech 等新模型支持。
 >
 > ⚠️ **模型要求**：必须配合**内置 MTP 头部**的 GGUF 文件使用（如 Qwen3.6-27B-Q4_K_P_mtp.gguf），普通 GGUF 无法启用 MTP。
-### 预编译 Release 下载
 
-| 文件 | 说明 | 编译环境 |
-|------|------|----------|
-| `llama-cpp-turboquant-mtp-vision.7z` | 全功能版，支持 turbo2/3/4 + Vision + MTP | CUDA 12.3, RTX 2080 |
-| `llama-cpp-turboquant-mtp.zip` | 标准版，支持 turbo2/3/4 + MTP | CUDA 12.3, RTX 2080 |
-| `llama-cpp-turboquant-mtp_cuda13.2.zip` | 标准版，支持 turbo2/3/4 + MTP | CUDA 13.2, RTX 4090 |
 ### 核心特性
+
 | 特性 | 说明 |
 |------|------|
 | **MTP 推测解码** | 每步预测多个 token，推理吞吐提升 2-5 倍 |
@@ -40,6 +34,16 @@ LLM inference in C/C++
 | **DeepSeekV32 + DSA** | 支持 DeepSeek V3.2 稀疏注意力架构 |
 | **Mimo v2.5 / Gemma4 / Granite Speech** | 新增多种最新模型架构 |
 | **Server 增强** | `/models?reload=1`、对话固定、MTP VRAM leak 修复 |
+
+---
+
+### 预编译 Release 下载
+
+| 文件 | 说明 | 编译环境 |
+|------|------|----------|
+| `llama-cpp-turboquant-mtp-vision.7z` | 全功能版，支持 turbo2/3/4 + Vision + MTP | CUDA 12.3, RTX 2080 |
+| `llama-cpp-turboquant-mtp.zip` | 标准版，支持 turbo2/3/4 + MTP | CUDA 12.3, RTX 2080 |
+| `llama-cpp-turboquant-mtp_cuda13.2.zip` | 标准版，支持 turbo2/3/4 + MTP | CUDA 13.2, RTX 4090 |
 
 > 如需自行编译特定架构，请参见下方编译说明。
 
