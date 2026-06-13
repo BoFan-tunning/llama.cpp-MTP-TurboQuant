@@ -29,11 +29,28 @@ LLM inference in C/C++
 | **MTP 推测解码** | 每步预测多个 token，推理吞吐提升 2-5 倍 |
 | **TurboQuant KV Cache** | `-ctk q8_0 -ctv turbo3` 非对称压缩，相比 F16 节省 76% 显存 |
 | **Vision 多模态支持** | MTP + 图像输入同时启用，已修复上游崩溃问题 |
-| **Qwen 3.6 智能思考模板** | 新增增强版 Jinja 模板，实现智能思考支持 |
-| **Tool Calling 完美兼容** | 修复官方模板 9 大缺陷，多层嵌套 JSON 正常渲染 |
+| **Qwen 3.6 智能思考模板** | 增强版 Jinja 模板，智能思考开关、Tool Calling 完美兼容 |
 | **DeepSeekV32 + DSA** | 支持 DeepSeek V3.2 稀疏注意力架构 |
 | **Mimo v2.5 / Gemma4 / Granite Speech** | 新增多种最新模型架构 |
-| **Server 增强** | `/models?reload=1`、对话固定、MTP VRAM leak 修复 |
+
+#### MTP 深度优化（本次 upstream sync）
+
+| 优化项 | 说明 |
+|--------|------|
+| **VRAM Leak 修复** | MTP sleep/resume 时释放 draft 模型和 KV cache 资源，长时间运行不爆显存 |
+| **MTP KV cache 类型继承** | MTP draft 层 KV cache 自动继承 `-ctk/-ctv` 参数，TurboQuant 自定义类型完整生效 |
+| **Device Buffer 内存优化** | MTP 推理时节省 GPU 设备缓冲区内存，降低显存峰值 |
+| **按需加载 Backend** | 启动时只加载必要的 GPU 后端，缩短启动时间 |
+
+#### Server / WebUI 增强
+
+| 特性 | 说明 |
+|------|------|
+| **`/models?reload=1`** | 路由模式可热加载模型，无需重启服务 |
+| **对话固定** | WebUI 固定重要对话，方便管理多轮历史 |
+| **TP 多 GPU 修复** | 修复 Qwen 3.5/3.6 在 3 卡并行时 tensor parallelism 粒度问题 |
+| **Granite 4.1 模板** | 新增 Granite 4.1 系列聊天模板 |
+| **vocab BOS 优化** | 自动识别 TemplateProcessing 特殊 token 作为 BOS |
 
 ---
 
